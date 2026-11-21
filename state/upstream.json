@@ -16,14 +16,14 @@
     "assets": [
       {
         "name": "dsh-devtools-0.2.2-rc.5-linux-amd64.tar.gz",
-        "size": 553555458
+        "size": 553556278
       },
       {
         "name": "dsh-devtools-0.2.2-rc.5-linux-arm64.tar.gz",
-        "size": 543182225
+        "size": 543177728
       }
     ],
-    "published_at": "2026-11-21T15:53:32Z"
+    "published_at": "2026-11-21T16:53:16Z"
   },
-  "checked_at": "2026-11-21T15:53:32Z"
+  "checked_at": "2026-11-21T16:53:16Z"
 }
