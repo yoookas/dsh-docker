@@ -65,24 +65,6 @@ Upstream variables (`PROXY_USERNAME`, `PROXY_PASSWORD`, `DSH_PORT`, …) keep wo
 4. Smoke test runs a real container: password login works, user is root, wrong password is rejected, zombies are reaped.
 5. Export `tar.gz` + `SHA256SUMS.txt` → publish a Release (tag mirrors upstream, `-rc` ⇒ pre-release).
 
-## Known issue: `fork of unprivileged child failed`
-
-**Symptom**: after a while the log is flooded with that line and SSH stops working; `docker exec` shows many `<defunct>`.
-
-**Cause**: upstream runs `node` as PID 1, which never reaps orphans. Every sshd connection that completes
-authentication leaves a privsep child behind, and it exits as a permanent zombie holding a PID. Once `pids.max`
-is full, `fork()` returns EAGAIN. Measured: **1 connection = 1 zombie**.
-
-**Fix**: `tini` is PID 1, so orphans are reaped immediately. Check:
-
-```bash
-docker exec dsh cat /proc/1/comm                                                     # tini
-docker exec dsh sh -c 'grep -lE "^State:[[:space:]]+Z" /proc/[0-9]*/status | wc -l'  # 0
-```
-
-> This only fixes zombie accumulation. Connection volume (brute force, clients reconnecting) is out of scope:
-> for public exposure prefer `SSH_AUTHORIZED_KEYS` + `SSH_PASSWORD_AUTHENTICATION=no`, or allow-list at the forwarder.
-
 ## Notes
 
 - Root password login is allowed by default; private networks only.

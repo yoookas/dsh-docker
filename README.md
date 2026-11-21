@@ -61,23 +61,6 @@ docker compose up -d
 4. 冒烟测试真起容器：密码登录成功、身份是 root、错误密码被拒、僵尸进程被回收。
 5. 导出 `tar.gz` + `SHA256SUMS.txt` → 发布 Release（tag 与上游一致，`-rc` 自动标 pre-release）。
 
-## 已知问题：`fork of unprivileged child failed`
-
-**症状**：容器跑一段时间后日志被这条错误刷满，SSH 基本不可用，`docker exec` 里能看到大量 `<defunct>`。
-
-**原因**：上游把 `node` 跑成 PID 1，它不回收孤儿进程。sshd 每条完成认证的连接都会遗留一个 privsep 子进程，
-退出后成为永久僵尸、占 1 个 PID；累积到 `pids.max` 后 `fork()` 返回 EAGAIN。实测 **1 条连接 = 1 个僵尸**。
-
-**修复**：镜像用 `tini` 作 1 号进程，孤儿进程即时回收。自查：
-
-```bash
-docker exec dsh cat /proc/1/comm                                                     # tini
-docker exec dsh sh -c 'grep -lE "^State:[[:space:]]+Z" /proc/[0-9]*/status | wc -l'  # 0
-```
-
-> 这里只解决僵尸累积。连接量本身（爆破、客户端反复重连）不在镜像职责内：公网场景建议
-> `SSH_AUTHORIZED_KEYS` + `SSH_PASSWORD_AUTHENTICATION=no`，或在转发层限制来源。
-
 ## 注意
 
 - 默认允许 root 密码登录，只建议内网使用。
