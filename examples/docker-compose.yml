@@ -1,41 +1,42 @@
-# docker compose 示例（宿主机目录绑定挂载）
+# docker compose 部署示例（推荐方式）
 #
-# 用法：
-#   1. 从 Release 下载镜像包并加载：docker load -i dsh-<tag>-linux-amd64.tar.gz
-#   2. 在本目录创建 .env：echo 'SSH_ROOT_PASSWORD=换成你的密码' > .env
-#   3. docker compose up -d
+# 1. 加载镜像包（按宿主架构二选一，tag 与 Release 一致）
+#      docker load -i dsh-devtools-0.2.2-rc.5-linux-arm64.tar.gz
+# 2. 准备环境变量
+#      cp .env.example .env && vi .env
+# 3. 启动 / 升级
+#      docker compose up -d
+#      docker compose up -d --force-recreate   # 换镜像时用（restart 不会换镜像）
 #
-# 三个目录都会自动创建，首次启动时：
-#   ./dsh-data  —— 空的，DSH 会初始化会话/配置
-#   ./ssh       —— 空的，首次启动会生成 sshd_config 与主机密钥（之后就固定了）
-#   ./workspaces—— 空的，在 Web UI 里把 /root/workspaces 添加为工作区即可使用
+# 三个目录会自动创建，首次启动时：
+#   ./dsh-data  —— 空的，DSH 初始化会话/配置
+#   ./workspaces—— 空的，在 Web UI 里把 /root/workspaces 添加为工作区
+#   ./ssh       —— 空的，自动生成 sshd_config 与主机密钥（之后就固定了）
 services:
   dsh:
-    # 与 Release tag 保持一致（上游 devtools-<版本>），例如 devtools-0.2.2-rc.5
+    # 与 Release tag 保持一致（上游 devtools-<版本>）
     image: dsh:devtools-0.2.2-rc.5
     container_name: dsh
     restart: unless-stopped
     ports:
-      - "3080:3080"   # DSH Web（上游默认对外端口）
-      - "2222:22"     # SSH；宿主机 22 空闲时可直接写 "22:22"
+      - "0.0.0.0:3080:3080"    # DSH Web
+      - "0.0.0.0:44222:22"     # SSH；暴露到公网前建议改公钥登录或限制来源
     environment:
-      # root 密码：只在容器启动时写入，不打进镜像
+      TZ: Asia/Shanghai
+      # 必填：root 的 SSH 密码（只在启动时写入，不打进镜像）
       SSH_ROOT_PASSWORD: ${SSH_ROOT_PASSWORD:?请在 .env 里设置 SSH_ROOT_PASSWORD}
-      # 更安全的做法：用公钥登录并关掉密码登录
-      # SSH_AUTHORIZED_KEYS: "ssh-ed25519 AAAAC3Nza... you@laptop"
-      # SSH_PASSWORD_AUTHENTICATION: "no"
-      # SSH_PERMIT_ROOT_LOGIN: "prohibit-password"
-
-      # 可选的 Web Basic Auth（上游代理功能）
-      # PROXY_USERNAME: admin
-      # PROXY_PASSWORD: changeme
+      # 可选：Web 的 Basic Auth，两个都填才生效
+      PROXY_USERNAME: ${PROXY_USERNAME:-}
+      PROXY_PASSWORD: ${PROXY_PASSWORD:-}
+      # 可选：容器内 gh 用的 token（建议 fine-grained、最小权限、短期）
+      GH_TOKEN: ${GH_TOKEN:-}
     volumes:
-      # DSH 的会话 / 配置数据
+      # DSH 的会话 / 配置
       - ./dsh-data:/root/.dsh
-      # SSH 主机密钥 + sshd 配置；挂上之后容器重建也不会变指纹
-      - ./ssh:/etc/ssh
-      # 工作区：容器里的 /root/workspaces，Web UI 里添加为工作区即可
+      # 工作区：在 Web UI 里把 /root/workspaces 添加为工作区
       - ./workspaces:/root/workspaces
+      # SSH 主机密钥 + sshd 配置；挂上后重建容器指纹不变
+      - ./ssh:/etc/ssh
     healthcheck:
       test: ["CMD", "/usr/local/bin/dsh-healthcheck.sh"]
       interval: 30s

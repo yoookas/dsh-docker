@@ -4,119 +4,90 @@
 ![Release](https://img.shields.io/github/v/release/yoookas/dsh-docker?include_prereleases&label=release)
 ![License](https://img.shields.io/github/license/yoookas/dsh-docker)
 
-A derived image of [`smanx/deepseek-harness`](https://hub.docker.com/r/smanx/deepseek-harness/tags):
-the `devtools-<version>` variant plus **OpenSSH Server** and **gh**, with the root password supplied at runtime.
+A derivative of [`smanx/deepseek-harness`](https://hub.docker.com/r/smanx/deepseek-harness/tags):
+adds **OpenSSH Server** and **gh** on top of the `devtools-<version>` variant, with the root password
+injected from an environment variable.
 
-An hourly job watches upstream, rebuilds on new versions, smoke-tests the result, and publishes `tar.gz` images
-to GitHub Releases (release tags mirror upstream).
+Every hour the repo checks upstream, and on a new version it builds, smoke-tests and publishes
+a tarball to GitHub Releases (tags mirror upstream).
 
 ## Quick start
 
+Deployment is [Docker Compose](examples/docker-compose.yml); the `dsh-data` / `workspaces` / `ssh`
+directories are created automatically.
+
 ```bash
-# 1. download and load (use -linux-arm64 on ARM)
-curl -LO https://github.com/yoookas/dsh-docker/releases/download/devtools-0.2.2-rc.5/dsh-devtools-0.2.2-rc.5-linux-amd64.tar.gz
-docker load -i dsh-devtools-0.2.2-rc.5-linux-amd64.tar.gz
+# 1. Load the image tarball (pick your arch: arm64 / amd64)
+curl -LO https://github.com/yoookas/dsh-docker/releases/download/devtools-0.2.2-rc.5/dsh-devtools-0.2.2-rc.5-linux-arm64.tar.gz
+docker load -i dsh-devtools-0.2.2-rc.5-linux-arm64.tar.gz
 
-# 2. run
-docker run -d --name dsh \
-  -p 3080:3080 -p 2222:22 \
-  -e SSH_ROOT_PASSWORD='change-me' \
-  -v dsh-data:/root/.dsh \
-  dsh:devtools-0.2.2-rc.5
+# 2. Prepare compose + env
+cp examples/docker-compose.yml .
+cp examples/.env.example .env
+vi .env                     # at least set SSH_ROOT_PASSWORD
 
-# 3. use
-#   Web: http://127.0.0.1:3080/
-#   SSH: ssh -p 2222 root@127.0.0.1
+# 3. Start
+docker compose up -d
+
+# 4. Access
+#   Web:  http://<host>:3080/
+#   SSH:  ssh -p 44222 root@<host>
 ```
 
-Compose example: [`examples/docker-compose.yml`](examples/docker-compose.yml).
+Upgrading: `docker load` the new tarball, then `docker compose up -d --force-recreate`
+(a plain `restart` does not swap the image).
 
-### Mounts
+## Mounts
 
 | Host | Container | Purpose |
 | --- | --- | --- |
 | `./dsh-data` | `/root/.dsh` | sessions / config (upstream convention) |
-| `./ssh` | `/etc/ssh` | host keys + sshd config; keeps the fingerprint stable across recreations |
 | `./workspaces` | `/root/workspaces` | workspace; add `/root/workspaces` in the Web UI |
-
-An empty `/etc/ssh` bind mount gets a generated `sshd_config` and fresh host keys on first start.
+| `./ssh` | `/etc/ssh` | host keys + sshd config; generated on first start, fingerprint stays stable |
 
 ## Environment variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SSH_ROOT_PASSWORD` | – | root password, applied at start |
-| `SSH_ROOT_PASSWORD_FILE` | – | read password from a file |
-| `SSH_AUTHORIZED_KEYS` | – | authorized keys for root |
+| `SSH_ROOT_PASSWORD` | – | root password; `SSH_ROOT_PASSWORD_FILE` or a Docker secret also works |
+| `SSH_AUTHORIZED_KEYS` | – | root public keys; pair with `SSH_PASSWORD_AUTHENTICATION=no` |
 | `SSH_PORT` | `22` | sshd port inside the container |
-| `SSH_PERMIT_ROOT_LOGIN` | `yes` | e.g. `prohibit-password` |
 | `SSH_ENABLED` | `true` | `false` = no sshd |
-| `DSH_APP_ENABLED` | `true` | `false` = SSH only |
 | `GH_TOKEN` | – | token for the bundled `gh` |
 
-Upstream variables (`DSH_PORT`, `PROXY_USERNAME`, …) keep working.
+Upstream variables (`PROXY_USERNAME`, `PROXY_PASSWORD`, `DSH_PORT`, …) keep working.
 
 ## How it works
 
 1. Hourly: pick the highest `devtools-<version>` tag and use its manifest digest as the fingerprint.
-2. Same fingerprint as `state/upstream.json` ⇒ skip; otherwise pull upstream and rebuild (failed builds don't update state).
-3. Build: upstream image + `openssh-server` + `gh` + `tini`; `tini` is PID 1 and reaps zombies, the entrypoint starts sshd, then execs the upstream command.
-4. Smoke test: real container, real SSH login, asserts `root`, asserts wrong passwords are rejected.
-5. Export `tar.gz` + `SHA256SUMS.txt` → publish a GitHub Release (tag mirrors upstream, `-rc` ⇒ pre-release).
-
-## Repository configuration
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `PLATFORMS` | `linux/amd64,linux/arm64` here | architectures to build |
-| `UPSTREAM_TRACK` | `version` | `version` or a fixed `tag` |
-| `UPSTREAM_TAG_PREFIX` | `devtools` | prefix for version mode, `none` for plain versions |
-| `UPSTREAM_TAG` | `devtools-latest` | used when `UPSTREAM_TRACK=tag` |
-
-Manual rebuild: Actions → **Build SSH image** → Run workflow → tick `force`.
-
-## Image size
-
-About **530 MB**: the upstream devtools variant is 514 MB and this image adds ~15 MB
-(mostly the `gh` 42 MB and `openssh-server` 5.8 MB layers).
-
-Note that `rm`-ing files in a later layer does **not** shrink the image (the data stays in lower layers),
-so the exported tar stays ~531 MB.
-
-The release `.tar.gz` is a *second* copy on disk (527 MB; the content is already compressed, so gzip barely helps) —
-delete it after `docker load`. Re-importing a newer build leaves the previous image dangling, so `docker image prune -f` occasionally.
+2. Same fingerprint ⇒ skip; otherwise pull upstream and rebuild (failed builds don't update state).
+3. Image = upstream + `openssh-server` + `gh` + `tini`; the entrypoint starts sshd, then execs upstream.
+4. Smoke test runs a real container: password login works, user is root, wrong password is rejected, zombies are reaped.
+5. Export `tar.gz` + `SHA256SUMS.txt` → publish a Release (tag mirrors upstream, `-rc` ⇒ pre-release).
 
 ## Known issue: `fork of unprivileged child failed`
 
 **Symptom**: after a while the log is flooded with that line and SSH stops working; `docker exec` shows many `<defunct>`.
 
-**Cause**: upstream runs `node` as PID 1, which never calls `waitpid(-1)`. Every sshd connection that completes
-the handshake and authentication leaves a privsep child behind; it exits as a permanent zombie holding a PID.
-Once `pids.max` (often 4537) is full, `fork()` returns EAGAIN and every connection logs that line until a restart.
-Measured: **1 connection = 1 zombie**; ~4.5 h under a brute force, ~5 days with only dsh-go reconnections.
+**Cause**: upstream runs `node` as PID 1, which never reaps orphans. Every sshd connection that completes
+authentication leaves a privsep child behind, and it exits as a permanent zombie holding a PID. Once `pids.max`
+is full, `fork()` returns EAGAIN. Measured: **1 connection = 1 zombie**.
 
-**Fix**: `tini` is PID 1, so orphans are reaped immediately.
-
-```dockerfile
-ENTRYPOINT ["tini", "-g", "--", "/usr/local/bin/dsh-entrypoint.sh"]
-```
-
-**Check**:
+**Fix**: `tini` is PID 1, so orphans are reaped immediately. Check:
 
 ```bash
 docker exec dsh cat /proc/1/comm                                                     # tini
 docker exec dsh sh -c 'grep -lE "^State:[[:space:]]+Z" /proc/[0-9]*/status | wc -l'  # 0
-docker exec dsh cat /sys/fs/cgroup/pids.current                                      # should not grow
 ```
 
-> This only fixes the PID exhaustion. Connection volume (brute force, clients reconnecting) is out of scope
-> for the image — for public exposure prefer keys only or allow-list at the forwarder.
+> This only fixes zombie accumulation. Connection volume (brute force, clients reconnecting) is out of scope:
+> for public exposure prefer `SSH_AUTHORIZED_KEYS` + `SSH_PASSWORD_AUTHENTICATION=no`, or allow-list at the forwarder.
 
 ## Notes
 
-- Root SSH login is allowed; keep it on a private network. Prefer `SSH_AUTHORIZED_KEYS` + `SSH_PASSWORD_AUTHENTICATION=no`.
-- `SSH_ROOT_PASSWORD` is visible via `docker inspect`; use `SSH_ROOT_PASSWORD_FILE` when that matters.
-- Host keys are generated on first start and are not baked into the image.
+- Root password login is allowed by default; private networks only.
+- Passwords and tokens passed as env vars are visible in `docker inspect`; use `SSH_ROOT_PASSWORD_FILE` when that matters.
+- The image is ~530 MB (514 MB upstream + ~15 MB for gh/openssh/tini); the release `.tar.gz` is a second copy you can delete after `docker load`.
 
 ## Credits
 
