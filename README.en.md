@@ -60,7 +60,7 @@ Upstream variables (`DSH_PORT`, `PROXY_USERNAME`, …) keep working.
 
 1. Hourly: pick the highest `devtools-<version>` tag and use its manifest digest as the fingerprint.
 2. Same fingerprint as `state/upstream.json` ⇒ skip; otherwise pull upstream and rebuild (failed builds don't update state).
-3. Build: upstream image + `openssh-server` + `gh`; the entrypoint starts sshd, then execs the upstream command.
+3. Build: upstream image + `openssh-server` + `gh` + `tini`; `tini` is PID 1 and reaps zombies, the entrypoint starts sshd, then execs the upstream command.
 4. Smoke test: real container, real SSH login, asserts `root`, asserts wrong passwords are rejected.
 5. Export `tar.gz` + `SHA256SUMS.txt` → publish a GitHub Release (tag mirrors upstream, `-rc` ⇒ pre-release).
 
@@ -85,6 +85,32 @@ so the exported tar stays ~531 MB.
 
 The release `.tar.gz` is a *second* copy on disk (527 MB; the content is already compressed, so gzip barely helps) —
 delete it after `docker load`. Re-importing a newer build leaves the previous image dangling, so `docker image prune -f` occasionally.
+
+## Known issue: `fork of unprivileged child failed`
+
+**Symptom**: after a while the log is flooded with that line and SSH stops working; `docker exec` shows many `<defunct>`.
+
+**Cause**: upstream runs `node` as PID 1, which never calls `waitpid(-1)`. Every sshd connection that completes
+the handshake and authentication leaves a privsep child behind; it exits as a permanent zombie holding a PID.
+Once `pids.max` (often 4537) is full, `fork()` returns EAGAIN and every connection logs that line until a restart.
+Measured: **1 connection = 1 zombie**; ~4.5 h under a brute force, ~5 days with only dsh-go reconnections.
+
+**Fix**: `tini` is PID 1, so orphans are reaped immediately.
+
+```dockerfile
+ENTRYPOINT ["tini", "-g", "--", "/usr/local/bin/dsh-entrypoint.sh"]
+```
+
+**Check**:
+
+```bash
+docker exec dsh cat /proc/1/comm                                                     # tini
+docker exec dsh sh -c 'grep -lE "^State:[[:space:]]+Z" /proc/[0-9]*/status | wc -l'  # 0
+docker exec dsh cat /sys/fs/cgroup/pids.current                                      # should not grow
+```
+
+> This only fixes the PID exhaustion. Connection volume (brute force, clients reconnecting) is out of scope
+> for the image — for public exposure prefer keys only or allow-list at the forwarder.
 
 ## Notes
 

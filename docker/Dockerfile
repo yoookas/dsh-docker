@@ -41,7 +41,11 @@ LABEL org.opencontainers.image.title="dsh" \
 # 上游若将来改成非 root，这里强制回到 root，否则装不了包也起不了 sshd
 USER root
 
-# ── 1. 安装 OpenSSH Server（apt / apk / dnf 自适应）────────────────────
+# ── 1. 安装 OpenSSH Server + tini（apt / apk / dnf 自适应）──────────────
+# tini 是容器 1 号进程：上游把 node 跑成 PID 1，不回收孤儿进程。sshd 每次连接
+# 都会 fork 出 privsep 子进程，连接异常中断时子进程被遗留，退出后变成永久
+# 僵尸；累积到 pids.max 后新连接全部 fork 失败，日志被
+# "fork of unprivileged child failed" 刷屏。详见 README「已知问题」。
 COPY docker/install-openssh.sh /usr/local/bin/dsh-install-openssh.sh
 RUN chmod 0755 /usr/local/bin/dsh-install-openssh.sh \
  && /usr/local/bin/dsh-install-openssh.sh
@@ -88,4 +92,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # 注意：设置 ENTRYPOINT 会重置继承来的 CMD，因此上游的启动命令
 # 由 /usr/local/bin/dsh-upstream-launch.sh 在构建期捕获并保存（见 scripts/gen-launcher.sh）。
-ENTRYPOINT ["/usr/local/bin/dsh-entrypoint.sh"]
+#
+# tini 做 1 号进程：回收被 reparent 过来的孤儿进程（sshd 的 privsep 子进程），
+# 否则僵尸会累积到 pids.max，最终所有新连接 fork 失败。用 PATH 解析，兼容
+# 各发行版的安装路径（Debian /usr/bin、Alpine /sbin）。
+ENTRYPOINT ["tini", "-g", "--", "/usr/local/bin/dsh-entrypoint.sh"]

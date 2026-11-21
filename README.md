@@ -59,7 +59,7 @@ docker run -d --name dsh \
 
 1. 每小时拉一次上游 tag 列表，在 `devtools-<版本>` 里挑最高版本，取 manifest 摘要当指纹。
 2. 指纹与 `state/upstream.json` 一致就跳过；不一致才 `docker pull` 上游镜像并重建（构建失败不写状态，下一小时重试）。
-3. 构建：上游镜像 + `openssh-server` + `gh`；入口脚本先起 sshd，再 exec 上游命令。
+3. 构建：上游镜像 + `openssh-server` + `gh` + `tini`；`tini` 做 1 号进程回收僵尸，入口脚本先起 sshd，再 exec 上游命令。
 4. 冒烟：真起容器、真用密码 SSH 登录、断言身份是 root、错误密码被拒。
 5. 导出 `tar.gz` + `SHA256SUMS.txt` → 发布 Release（tag 与上游一致，`-rc` 自动标 pre-release）。
 
@@ -81,6 +81,32 @@ docker run -d --name dsh \
 注意：在后面的层里 `rm` 文件**不会**让镜像变小（数据仍留在下层），所以清理只影响容器内可见文件，tar 包大小基本不变（531 MB）。
 
 Release 里的 `.tar.gz` 是**另一份拷贝**（527 MB，内容已压缩，gzip 几乎压不动）——`docker load` 完就可以删掉；重复导入新版本时，旧的同名镜像会变成 `<none>` 悬空镜像，记得 `docker image prune -f`。
+
+## 已知问题：`fork of unprivileged child failed`
+
+**症状**：容器跑一段时间后日志被同一条错误刷满，SSH 全部连不上；`docker exec` 里能看到大量 `<defunct>`。
+
+**原因**：上游把 `node` 跑成 PID 1，它不调用 `waitpid(-1)`。sshd 每条「完成握手并走完认证」的连接都会遗留一个
+privsep 子进程，退出后成为永久僵尸、占 1 个 PID。累积到 `pids.max`（常见 4537）后 `fork()` 返回 EAGAIN，
+每条连接打印一行日志，直到重启容器。实测：**1 条连接 = 1 个僵尸**；被爆破时 4.5 小时撞线，
+只有 dsh-go 长期连接也要约 5 天。
+
+**修复**：镜像用 `tini` 作 1 号进程，孤儿进程即时回收。
+
+```dockerfile
+ENTRYPOINT ["tini", "-g", "--", "/usr/local/bin/dsh-entrypoint.sh"]
+```
+
+**自查**：
+
+```bash
+docker exec dsh cat /proc/1/comm                                                     # tini
+docker exec dsh sh -c 'grep -lE "^State:[[:space:]]+Z" /proc/[0-9]*/status | wc -l'  # 0
+docker exec dsh cat /sys/fs/cgroup/pids.current                                      # 不随时间增长
+```
+
+> 这里只解决「僵尸吃光 PID」。连接量本身（爆破、客户端反复重连）不在镜像职责内，
+> 公网场景建议改公钥登录（`SSH_AUTHORIZED_KEYS` + `SSH_PASSWORD_AUTHENTICATION=no`）或在转发层限源。
 
 ## 注意
 

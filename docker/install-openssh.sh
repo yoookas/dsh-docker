@@ -23,19 +23,20 @@ if command -v apt-get >/dev/null 2>&1; then
   if ! command -v ssh >/dev/null 2>&1; then
     set -- "$@" openssh-client
   fi
-  apt-get install -y --no-install-recommends "$@"
+  # tini：容器 1 号进程的回收器（见 Dockerfile 末尾说明）
+  apt-get install -y --no-install-recommends "$@" tini
   apt-get clean
   rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb
   SFTP_CANDIDATES="/usr/lib/openssh/sftp-server /usr/libexec/openssh/sftp-server /usr/lib/ssh/sftp-server"
 elif command -v apk >/dev/null 2>&1; then
-  apk add --no-cache openssh-server openssh-client
+  apk add --no-cache openssh-server openssh-client tini
   SFTP_CANDIDATES="/usr/lib/ssh/sftp-server /usr/libexec/sftp-server /usr/lib/openssh/sftp-server"
 elif command -v dnf >/dev/null 2>&1; then
-  dnf install -y openssh-server openssh-clients
+  dnf install -y openssh-server openssh-clients tini
   dnf clean all
   SFTP_CANDIDATES="/usr/libexec/openssh/sftp-server /usr/libexec/sftp-server"
 elif command -v microdnf >/dev/null 2>&1; then
-  microdnf install -y openssh-server openssh-clients
+  microdnf install -y openssh-server openssh-clients tini
   microdnf clean all
   SFTP_CANDIDATES="/usr/libexec/openssh/sftp-server /usr/libexec/sftp-server"
 else

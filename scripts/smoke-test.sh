@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # 构建后冒烟测试：
 #   1. 镜像内 sshd 配置语法合法；
-#   2. 内置工具齐全（gh / git / dsh / node / sshd / chpasswd）；
+#   2. 内置工具齐全（gh / git / dsh / node / sshd / chpasswd / tini）；
 #   3. 只开 SSH 的容器（DSH_APP_ENABLED=false）：
 #      用 SSH_ROOT_PASSWORD 注入的密码能登录、登录用户是 root、错误密码被拒；
 #   4. 默认容器（SSH + DSH）能起来并保持运行（DSH 依赖外部配置，失败只警告不阻断）；
-#   5. 空的 /etc/ssh 绑定挂载（模拟 compose 里的 ./ssh）也能自动补齐并登录。
+#   5. 空的 /etc/ssh 绑定挂载（模拟 compose 里的 ./ssh）也能自动补齐并登录；
+#   6. 1 号进程是 tini，且 20 次认证失败不会留下僵尸进程。
 #
 # 用法：bash scripts/smoke-test.sh <image:tag>   [SMOKE_PORT=2222 可指定端口]
 set -euo pipefail
@@ -48,15 +49,15 @@ fail() {
 
 log "镜像：$IMAGE"
 
-log '1/5 校验 sshd 配置'
+log '1/6 校验 sshd 配置'
 # 镜像里不保留主机密钥（每个容器首启才生成），所以先造一把再 -t
 docker run --rm --entrypoint sh "$IMAGE" -c 'ssh-keygen -A >/dev/null 2>&1 && sshd -t' \
   || fail 'sshd -t 校验失败'
 
-log '2/5 校验镜像内置工具'
+log '2/6 校验镜像内置工具'
 docker run --rm --entrypoint sh "$IMAGE" -c '
   set -e
-  for bin in gh git node dsh ssh sshd ssh-keygen chpasswd; do
+  for bin in gh git node dsh ssh sshd ssh-keygen chpasswd tini; do
     command -v "$bin" >/dev/null 2>&1 || { echo "缺少命令：$bin"; exit 1; }
   done
   echo "gh      $(gh --version 2>/dev/null | head -n 1)"
@@ -134,7 +135,7 @@ try_login() { # 返回 0 表示登录成功
   return 1
 }
 
-log '3/5 SSH 容器：密码登录 / root 身份 / 错误密码'
+log '3/6 SSH 容器：密码登录 / root 身份 / 错误密码'
 start_container ssh -e DSH_APP_ENABLED=false
 build_ssh_opts
 
@@ -163,7 +164,7 @@ container_running || fail 'SSH 容器已退出'
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 CONTAINER=""
 
-log '4/5 默认容器：SSH + DSH 能同时起来'
+log '4/6 默认容器：SSH + DSH 能同时起来'
 start_container full
 sleep 8
 if container_running; then
@@ -175,7 +176,7 @@ fi
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 CONTAINER=""
 
-log '5/5 空 /etc/ssh（模拟 compose 首次挂载 ./ssh）'
+log '5/6 空 /etc/ssh（模拟 compose 首次挂载 ./ssh）'
 start_container bind -e DSH_APP_ENABLED=false --tmpfs /etc/ssh
 build_ssh_opts
 wait_port || fail "绑定挂载空 /etc/ssh 后 SSH 端口未就绪（默认配置没恢复成功？）"
@@ -184,6 +185,52 @@ if command -v sshpass >/dev/null 2>&1; then
   grep -qx 'root' <<<"$OUTPUT" || fail '绑定挂载场景登录用户不是 root'
   log '空 /etc/ssh 能自动生成配置并登录'
 fi
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+CONTAINER=""
+
+log '6/6 僵尸进程回收（1 号进程必须是 tini）'
+start_container reap -e DSH_APP_ENABLED=false
+build_ssh_opts
+wait_port || fail '僵尸回收测试：SSH 端口未就绪'
+
+# 上游把 node 跑成 PID 1，不回收孤儿进程；僵尸累积到 pids.max 后 SSH 全断。
+init_comm="$(docker exec "$CONTAINER" cat /proc/1/comm 2>/dev/null | tr -dc '[:print:]')"
+[ "$init_comm" = 'tini' ] || fail "1 号进程是 '${init_comm:-未知}' 而不是 tini：孤儿进程会累积成僵尸"
+log '1 号进程是 tini'
+
+# 注意：裸 TCP 连接不会遗留子进程（实测 40 次 = 0 僵尸），必须用真实认证失败
+# 才能复现（20 次 = 20 个僵尸），否则这个断言是假阴性。
+if command -v sshpass >/dev/null 2>&1; then
+  SSH_OPTS_FAIL=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+                 -o PreferredAuthentications=password -o PubkeyAuthentication=no
+                 -o NumberOfPasswordPrompts=1 -o ConnectTimeout=10 -p "$PORT")
+  for _ in $(seq 1 20); do
+    sshpass -p 'definitely-wrong-password' ssh "${SSH_OPTS_FAIL[@]}" root@127.0.0.1 true \
+      >/dev/null 2>&1 || true
+  done
+  sleep 3
+else
+  warn '未安装 sshpass，无法制造认证失败，跳过僵尸数量断言（CI 中会安装）'
+fi
+
+# 用 /proc 统计僵尸（不依赖 ps 是否存在于镜像里）
+zombie_count() {
+  docker exec "$CONTAINER" sh -c \
+    'grep -lE "^State:[[:space:]]+Z" /proc/[0-9]*/status 2>/dev/null | wc -l' 2>/dev/null \
+    | tr -dc '0-9'
+}
+ZOMBIES="$(zombie_count)"; ZOMBIES="${ZOMBIES:-99}"
+log "20 次认证失败后残留僵尸进程：${ZOMBIES} 个"
+if command -v sshpass >/dev/null 2>&1; then
+  # 没有 tini 时这里会是 ~20 个，且永久不消失；阈值 2 足够区分
+  [ "$ZOMBIES" -le 2 ] || fail "残留 ${ZOMBIES} 个僵尸进程（tini 没起到回收作用）"
+else
+  log '（未做 sshpass 断言，仅记录僵尸数）'
+fi
+
+PIDS_NOW="$(docker exec "$CONTAINER" cat /sys/fs/cgroup/pids.current 2>/dev/null | tr -dc '0-9')"
+log "pids.current=${PIDS_NOW:-未知}"
+
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 CONTAINER=""
 
