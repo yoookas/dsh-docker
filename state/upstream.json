@@ -5,9 +5,9 @@
     "repository": "smanx/deepseek-harness",
     "tag": "devtools-0.2.2-rc.5",
     "mode": "version",
-    "digest": "sha256:3606102cfd9a5d4a766181cc12ad4549da16544cb52fca44b80cc3c8a1cd2f7a",
-    "fingerprint": "f6bd9a90f7d5900df466c0de5a6d3e68e2ac56b1e00b672fab97f5978a48b493",
-    "last_updated": "2026-11-21T00:11:49.996746Z",
+    "digest": "sha256:4e52eb4c693da13e4374963475ac71c6a48859eb512cdfd1f9008bbc5aad000c",
+    "fingerprint": "e14b4ed6887343e2568160a29697d704a8671a4867dacb7b9d7f014fc3998632",
+    "last_updated": "2026-11-21T23:10:09.204234Z",
     "app_version": "0.2.2-rc.5"
   },
   "release": {
@@ -16,14 +16,14 @@
     "assets": [
       {
         "name": "dsh-devtools-0.2.2-rc.5-linux-amd64.tar.gz",
-        "size": 553556278
+        "size": 553544663
       },
       {
         "name": "dsh-devtools-0.2.2-rc.5-linux-arm64.tar.gz",
-        "size": 543177728
+        "size": 543161126
       }
     ],
-    "published_at": "2026-11-21T16:53:16Z"
+    "published_at": "2026-11-22T00:22:00Z"
   },
-  "checked_at": "2026-11-21T16:53:16Z"
+  "checked_at": "2026-11-22T00:22:00Z"
 }
