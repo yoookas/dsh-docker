@@ -5,8 +5,7 @@
 ![License](https://img.shields.io/github/license/yoookas/dsh-docker)
 
 [`smanx/deepseek-harness`](https://hub.docker.com/r/smanx/deepseek-harness/tags) 的衍生镜像：
-在 `devtools-<版本>` 变体上加装 **OpenSSH Server** 和 **gh**，并把上游自带的 **Go**（当前 1.26.11）接进 `PATH`，
-root 密码由环境变量指定。
+在 `devtools-<版本>` 变体上加装 **OpenSSH Server**、**gh** 和 **Go 1.26.11**，root 密码由环境变量指定。
 
 仓库每小时检查上游更新，有新版本就自动构建、冒烟测试，打包发到 Release（tag 与上游一致）。
 
@@ -45,18 +44,18 @@ docker compose up -d
 
 ## 内置工具
 
-上游 devtools 变体自带 git / vim / python3 / pnpm / uv / gcc / Go 等；本镜像只补 OpenSSH、gh、tini，
-并把上游的 Go 接进 `PATH`：
+上游 devtools 变体自带 git / vim / python3 / pnpm / uv / build-essential 等（见上游的
+`.build-variants`，其中**没有 Go**），本镜像另外补上：
 
 | 工具 | 版本 | 说明 |
 | --- | --- | --- |
-| `go` / `gofmt` | 跟随上游，当前 `1.26.11` | 上游自带 `/usr/local/go`，本镜像只做软链 |
+| `go` / `gofmt` | `1.26.11`（`ARG GO_VERSION`，一行可升） | 本镜像新装：官方 tarball 解压到 `/usr/local/go`，软链进 `PATH` |
 | `sshd` | 发行版仓库 | 本镜像新装：OpenSSH Server，root 密码或公钥登录 |
 | `gh` | 安装时的最新稳定版 | 本镜像新装：GitHub CLI，用 `GH_TOKEN` 认证 |
 | `tini` | 发行版仓库 | 本镜像新装：1 号进程，回收孤儿进程 |
 
-Go **不额外安装**：版本完全跟着上游走，不下载、不降级、也没有版本参数可调。构建时会执行一次
-`go version` 并把结果打进日志；上游哪天不再自带 Go，构建会直接失败，不会悄悄发出一个没有 `go` 的镜像。
+构建时下载官方 tarball（约 70 MB）并用 go.dev 清单里的 sha256 校验，装完执行 `go version` 断言版本；
+装不上或校验不过就让构建失败。升级 Go 只改 Dockerfile 里的 `ARG GO_VERSION`。
 
 `go install` 的二进制落在 `/root/go/bin`（已在 `PATH`）；compose 里把 `./go` 挂到 `/root/go`，
 容器重建后模块缓存和这些二进制都还在。
@@ -77,7 +76,7 @@ Go **不额外安装**：版本完全跟着上游走，不下载、不降级、�
 
 1. 每小时查上游 `devtools-<版本>` 的最高 tag，取 manifest 摘要当指纹。
 2. 指纹没变就跳过；变了才拉上游镜像重建（构建失败不写状态，下一小时重试）。
-3. 镜像 = 上游 + `openssh-server` + `gh` + `tini`，并把上游自带的 Go 接进 `PATH`；入口脚本先起 sshd，再 exec 上游命令。
+3. 镜像 = 上游 + `openssh-server` + `gh` + `tini` + 官方 Go 工具链；入口脚本先起 sshd，再 exec 上游命令。
 4. 冒烟测试真起容器：密码登录成功、身份是 root、错误密码被拒、僵尸进程被回收。
 5. 导出 `tar.gz` + `SHA256SUMS.txt` → 发布 Release（tag 与上游一致，`-rc` 自动标 pre-release）。
 
@@ -85,7 +84,7 @@ Go **不额外安装**：版本完全跟着上游走，不下载、不降级、�
 
 - 默认允许 root 密码登录，只建议内网使用。
 - 密码和 token 走环境变量时 `docker inspect` 可见；敏感场景用 `SSH_ROOT_PASSWORD_FILE`。
-- 镜像约 530 MB（上游 devtools 514 MB + gh/openssh/tini 约 15 MB）。Go 直接用上游自带的，不额外占体积。Release 里的 `.tar.gz` 是另一份拷贝，`docker load` 完可以删。
+- 镜像约 800 MB（上游 devtools 514 MB + gh/openssh/tini 约 15 MB + Go 工具链解压后约 265 MB；CI 的「镜像体积报表」会打印实际值）。Release 里的 `.tar.gz` 是另一份拷贝，`docker load` 完可以删。
 
 ## 致谢
 

@@ -3,17 +3,16 @@
 # dsh
 # ────────────────────
 # 在官方第三方镜像 smanx/deepseek-harness 之上：
-#   * 加装 OpenSSH Server 与 gh；
-#   * 把上游自带的 Go 工具链接进 PATH（不额外安装/不降级，上游版本就是镜像版本）。
+#   * 加装 OpenSSH Server、gh 与 Go 工具链（上游 devtools 变体不含 Go）。
 # root 密码由环境变量 SSH_ROOT_PASSWORD 在容器启动时注入（不打进镜像层）。
 #
-# 跟踪的上游变体：devtools-<版本>（自带 git/vim/python3/pnpm/uv/gcc/Go 等，适合 SSH 进去干活）
+# 跟踪的上游变体：devtools-<版本>（自带 git/vim/python3/pnpm/uv/build-essential 等，适合 SSH 进去干活）
 #
 # 上游镜像事实（2026-11 核对）：
 #   * 基础镜像 node:24-slim（Debian 12 bookworm）
 #   * WORKDIR /app，ENTRYPOINT ["/app/entrypoint.sh"]，默认监听 3080
 #   * 以 root 运行
-#   * 自带 /usr/local/go（2026-11 为 go1.26.11），但没有进 PATH
+#   * 开发工具按上游 .build-variants 的 apt 列表安装，其中没有 golang
 # 因此这里可以直接 apt-get 安装 openssh-server，并用 entrypoint 包裹上游入口。
 #
 # 本地构建：
@@ -23,6 +22,9 @@
 ARG BASE_IMAGE=smanx/deepseek-harness:devtools-latest
 
 FROM ${BASE_IMAGE}
+
+# Go 工具链版本：升级只改这一行
+ARG GO_VERSION=1.26.11
 
 # 重新声明，供 LABEL / ENV 使用
 ARG BASE_IMAGE
@@ -58,19 +60,10 @@ COPY docker/install-gh.sh /usr/local/bin/dsh-install-gh.sh
 RUN chmod 0755 /usr/local/bin/dsh-install-gh.sh \
  && /usr/local/bin/dsh-install-gh.sh
 
-# ── 3. Go 工具链：直接用上游自带的，只补 PATH ───────────────────────────
-# 上游 devtools 变体自带 /usr/local/go（2026-11 为 go1.26.11），但没进 PATH。
-# 这里不安装、不下载、不降级：有就直接链进 /usr/local/bin，没有就让构建失败，
-# 避免上游哪天删掉 Go 还悄悄发出一个没有 go 的镜像。
-RUN set -eu; \
-    if [ ! -x /usr/local/go/bin/go ]; then \
-      echo '[dsh] 错误：上游镜像里没有 /usr/local/go/bin/go（devtools 变体应当自带 Go）' >&2; \
-      exit 1; \
-    fi; \
-    mkdir -p /usr/local/bin; \
-    ln -sf /usr/local/go/bin/go /usr/local/bin/go; \
-    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt; \
-    go version
+# ── 3. Go 工具链（上游 devtools 变体不含 Go，这里装官方发行包）──────────
+COPY docker/install-go.sh /usr/local/bin/dsh-install-go.sh
+RUN chmod 0755 /usr/local/bin/dsh-install-go.sh \
+ && GO_VERSION="${GO_VERSION}" /usr/local/bin/dsh-install-go.sh
 
 # ── 4. 启动脚本 / 健康检查 / 上游入口桥接 ──────────────────────────────
 COPY docker/entrypoint.sh /usr/local/bin/dsh-entrypoint.sh

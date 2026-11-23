@@ -5,8 +5,8 @@
 ![License](https://img.shields.io/github/license/yoookas/dsh-docker)
 
 A derivative of [`smanx/deepseek-harness`](https://hub.docker.com/r/smanx/deepseek-harness/tags):
-adds **OpenSSH Server** and **gh** on top of the `devtools-<version>` variant, wires the upstream-bundled
-**Go** (1.26.11 today) onto `PATH`, and injects the root password from an environment variable.
+adds **OpenSSH Server**, **gh** and a **Go 1.26.11** toolchain on top of the `devtools-<version>`
+variant, with the root password injected from an environment variable.
 
 Every hour the repo checks upstream, and on a new version it builds, smoke-tests and publishes
 a tarball to GitHub Releases (tags mirror upstream).
@@ -48,19 +48,19 @@ Upgrading: `docker load` the new tarball, then `docker compose up -d --force-rec
 
 ## Bundled tools
 
-The upstream devtools variant ships git / vim / python3 / pnpm / uv / gcc / Go; this image only adds
-OpenSSH, gh and tini, and wires the upstream Go onto `PATH`:
+The upstream devtools variant ships git / vim / python3 / pnpm / uv / build-essential and friends (see
+upstream `.build-variants` — **no Go**); this image adds:
 
 | Tool | Version | Notes |
 | --- | --- | --- |
-| `go` / `gofmt` | follows upstream, `1.26.11` today | upstream's `/usr/local/go`; this image only symlinks it |
+| `go` / `gofmt` | `1.26.11` (`ARG GO_VERSION`, one line to bump) | added here: official tarball into `/usr/local/go`, symlinked onto `PATH` |
 | `sshd` | distro repo | added here: OpenSSH Server, root login via password or public key |
 | `gh` | latest stable at build time | added here: GitHub CLI, authenticated with `GH_TOKEN` |
 | `tini` | distro repo | added here: PID 1, reaps orphans |
 
-Go is **not installed here**: the version follows upstream exactly — no download, no downgrade, no version
-knob. The build runs `go version` and prints it to the log; if upstream ever drops Go, the build fails
-loudly instead of shipping an image without `go`.
+The build downloads the official tarball (~70 MB), verifies it against the sha256 in go.dev's download
+manifest, and asserts `go version` afterwards; a failed download or checksum fails the build. Bumping Go
+is a single `ARG GO_VERSION` change in the Dockerfile.
 
 `go install` binaries land in `/root/go/bin` (on `PATH`); compose mounts `./go` at `/root/go`, so the
 module cache and those binaries survive container recreation.
@@ -81,7 +81,7 @@ Upstream variables (`PROXY_USERNAME`, `PROXY_PASSWORD`, `DSH_PORT`, …) keep wo
 
 1. Hourly: pick the highest `devtools-<version>` tag and use its manifest digest as the fingerprint.
 2. Same fingerprint ⇒ skip; otherwise pull upstream and rebuild (failed builds don't update state).
-3. Image = upstream + `openssh-server` + `gh` + `tini`, with the upstream-bundled Go wired onto `PATH`; the entrypoint starts sshd, then execs upstream.
+3. Image = upstream + `openssh-server` + `gh` + `tini` + the official Go toolchain; the entrypoint starts sshd, then execs upstream.
 4. Smoke test runs a real container: password login works, user is root, wrong password is rejected, zombies are reaped.
 5. Export `tar.gz` + `SHA256SUMS.txt` → publish a Release (tag mirrors upstream, `-rc` ⇒ pre-release).
 
@@ -89,7 +89,7 @@ Upstream variables (`PROXY_USERNAME`, `PROXY_PASSWORD`, `DSH_PORT`, …) keep wo
 
 - Root password login is allowed by default; private networks only.
 - Passwords and tokens passed as env vars are visible in `docker inspect`; use `SSH_ROOT_PASSWORD_FILE` when that matters.
-- The image is ~530 MB (514 MB upstream + ~15 MB for gh/openssh/tini). Go comes from upstream, so it costs nothing extra. The release `.tar.gz` is a second copy you can delete after `docker load`.
+- The image is ~800 MB (514 MB upstream + ~15 MB for gh/openssh/tini + ~265 MB unpacked Go toolchain; the CI size report prints the actual numbers). The release `.tar.gz` is a second copy you can delete after `docker load`.
 
 ## Credits
 

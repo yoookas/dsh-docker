@@ -29,13 +29,14 @@ jobs:
           shellcheck --version
           # 运行期脚本必须是 POSIX sh，--shell=sh 额外校验可移植性
           shellcheck --shell=sh docker/entrypoint.sh docker/healthcheck.sh \
-            docker/install-openssh.sh docker/install-gh.sh docker/upstream-launch.sh
+            docker/install-openssh.sh docker/install-gh.sh docker/install-go.sh \
+            docker/upstream-launch.sh
           shellcheck scripts/*.sh tests/*.sh
 
       - name: 语法检查（bash -n / dash -n）
         run: |
           set -euo pipefail
-          for f in docker/entrypoint.sh docker/healthcheck.sh docker/install-openssh.sh docker/install-gh.sh; do
+          for f in docker/entrypoint.sh docker/healthcheck.sh docker/install-openssh.sh docker/install-gh.sh docker/install-go.sh; do
             echo "== dash -n $f"
             dash -n "$f"
           done

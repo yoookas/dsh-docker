@@ -32,12 +32,13 @@ smoke: ## 冒烟测试（需要在本地有该镜像）
 	bash scripts/smoke-test.sh $(IMAGE)
 
 lint: ## shellcheck + dash/bash 语法检查
-	shellcheck --shell=sh docker/entrypoint.sh docker/healthcheck.sh docker/install-openssh.sh docker/install-gh.sh docker/upstream-launch.sh || true
+	shellcheck --shell=sh docker/entrypoint.sh docker/healthcheck.sh docker/install-openssh.sh docker/install-gh.sh docker/install-go.sh docker/upstream-launch.sh || true
 	shellcheck scripts/*.sh || true
 	dash -n docker/entrypoint.sh
 	dash -n docker/healthcheck.sh
 	dash -n docker/install-openssh.sh
 	dash -n docker/install-gh.sh
+	dash -n docker/install-go.sh
 	for f in scripts/*.sh; do bash -n "$$f"; done
 	docker run --rm -i hadolint/hadolint:2.12.0 hadolint --config .hadolint.yaml < docker/Dockerfile
 
