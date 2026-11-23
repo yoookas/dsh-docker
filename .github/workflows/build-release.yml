@@ -52,7 +52,7 @@ jobs:
       last_updated: ${{ steps.upstream.outputs.last_updated }}
     steps:
       - name: 检出仓库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 计算上游指纹
         id: upstream
@@ -117,7 +117,7 @@ jobs:
       HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' }}
     steps:
       - name: 检出仓库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装冒烟测试依赖
         run: |
