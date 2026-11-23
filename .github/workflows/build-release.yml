@@ -129,7 +129,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
 
       - name: 设置 Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: 登录 Docker Hub（可选，提高拉取限额）
         if: env.HAS_DOCKERHUB == 'true'
