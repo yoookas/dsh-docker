@@ -1,6 +1,6 @@
 # dsh
 
-![Build](https://github.com/yoookas/dsh-docker/actions/workflows/build-ssh-image.yml/badge.svg)
+![Build](https://github.com/yoookas/dsh-docker/actions/workflows/build-release.yml/badge.svg)
 ![Release](https://img.shields.io/github/v/release/yoookas/dsh-docker?include_prereleases&label=release)
 ![License](https://img.shields.io/github/license/yoookas/dsh-docker)
 

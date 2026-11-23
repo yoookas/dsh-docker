@@ -1,7 +1,7 @@
-name: Build SSH image
+name: Build release image
 
 # 每小时检查 smanx/deepseek-harness 的 devtools-<版本> 标签是否有更新：
-#   有新版本 → 拉取该镜像 → 构建「加装 OpenSSH + root 密码注入」的衍生镜像
+#   有新版本 → 拉取该镜像 → 构建「加装 OpenSSH + gh + Go，root 密码注入」的衍生镜像
 #            → 冒烟测试 → 导出成 tar.gz → 发布到 GitHub Release（tag 与上游对齐）
 #   无新版本 → 直接跳过
 on:
@@ -23,11 +23,11 @@ on:
     paths:
       - "docker/**"
       - "scripts/**"
-      - ".github/workflows/build-ssh-image.yml"
+      - ".github/workflows/build-release.yml"
 
 # 同一时间只跑一个，避免两次任务并发往同一个 Release 上传
 concurrency:
-  group: build-ssh-image
+  group: build-release
   cancel-in-progress: false
 
 permissions:

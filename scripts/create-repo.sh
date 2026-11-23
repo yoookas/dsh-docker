@@ -107,7 +107,7 @@ log '完成 ✅'
 cat <<EOF
 
 仓库地址：https://github.com/${OWNER}/${REPO_NAME}
-Actions ：https://github.com/${OWNER}/${REPO_NAME}/actions/workflows/build-ssh-image.yml
+Actions ：https://github.com/${OWNER}/${REPO_NAME}/actions/workflows/build-release.yml
 
 下一步：
   1. 打开上面的 Actions 页面，点 "Run workflow" 立即跑一次（首次会直接构建并发布 Release）；
