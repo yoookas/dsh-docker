@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # 构建后冒烟测试：
 #   1. 镜像内 sshd 配置语法合法；
-#   2. 内置工具齐全（gh / git / dsh / node / sshd / chpasswd / tini）；
+#   2. 内置工具齐全（gh / git / go / dsh / node / sshd / chpasswd / tini），且 go 能编译；
 #   3. 只开 SSH 的容器（DSH_APP_ENABLED=false）：
-#      用 SSH_ROOT_PASSWORD 注入的密码能登录、登录用户是 root、错误密码被拒；
+#      用 SSH_ROOT_PASSWORD 注入的密码能登录、登录用户是 root、错误密码被拒、登录会话里 go 可用；
 #   4. 默认容器（SSH + DSH）能起来并保持运行（DSH 依赖外部配置，失败只警告不阻断）；
 #   5. 空的 /etc/ssh 绑定挂载（模拟 compose 里的 ./ssh）也能自动补齐并登录；
 #   6. 1 号进程是 tini，且 20 次认证失败不会留下僵尸进程。
@@ -57,13 +57,22 @@ docker run --rm --entrypoint sh "$IMAGE" -c 'ssh-keygen -A >/dev/null 2>&1 && ss
 log '2/6 校验镜像内置工具'
 docker run --rm --entrypoint sh "$IMAGE" -c '
   set -e
-  for bin in gh git node dsh ssh sshd ssh-keygen chpasswd tini; do
+  for bin in gh git go node dsh ssh sshd ssh-keygen chpasswd tini; do
     command -v "$bin" >/dev/null 2>&1 || { echo "缺少命令：$bin"; exit 1; }
   done
   echo "gh      $(gh --version 2>/dev/null | head -n 1)"
   echo "git     $(git --version)"
+  echo "go      $(go version)"
   echo "node    $(node -v)"
   echo "dsh     $(dsh --version 2>/dev/null | head -n 1 || echo ok)"
+  # go version 只能证明二进制在，编译一次才证明工具链（pkg/tool、src）完整
+  tmp=$(mktemp -d); cd "$tmp"
+  export HOME="${HOME:-/root}" GOCACHE="$tmp/cache"
+  printf "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"go-ok\") }\n" > main.go
+  go mod init smoke >/dev/null 2>&1
+  go build -o "$tmp/smoke" . && "$tmp/smoke" | grep -qx go-ok
+  rm -rf "$tmp"
+  echo "go build 正常"
 ' || fail '镜像内置工具检查失败'
 
 start_container() { # $1 = 阶段名，其余为额外 docker run 参数
@@ -157,6 +166,16 @@ else
   set -e
   [ "$RC" -ne 0 ] || fail '错误密码竟然登录成功了'
   log "错误密码按预期被拒绝（ssh 退出码 $RC）"
+
+  # Go 是给 SSH 进去干活用的：必须用「登录 shell」测——/etc/profile 会把
+  # PATH 重置成 Debian 默认值，只有 /usr/local/bin 里的软链能活下来；
+  # 直接 ssh host 'go version' 是非登录执行，测不出这个问题。
+  set +e
+  GO_OUT="$(sshpass -p "$PASSWORD" ssh "${SSH_OPTS[@]}" root@127.0.0.1 'bash -lc "go version"' 2>&1)"
+  GO_RC=$?
+  set -e
+  [ "$GO_RC" -eq 0 ] || fail "SSH 会话里 go 不可用（rc=$GO_RC）：$(printf '%s' "$GO_OUT" | tail -n 2)"
+  log "SSH 会话里 go 可用：$GO_OUT"
 fi
 
 container_running || fail 'SSH 容器已退出'

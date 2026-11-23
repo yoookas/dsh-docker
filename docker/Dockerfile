@@ -2,15 +2,18 @@
 #
 # dsh
 # ────────────────────
-# 在官方第三方镜像 smanx/deepseek-harness 之上加装 OpenSSH Server，
+# 在官方第三方镜像 smanx/deepseek-harness 之上：
+#   * 加装 OpenSSH Server 与 gh；
+#   * 把上游自带的 Go 工具链接进 PATH（不额外安装/不降级，上游版本就是镜像版本）。
 # root 密码由环境变量 SSH_ROOT_PASSWORD 在容器启动时注入（不打进镜像层）。
 #
-# 跟踪的上游变体：devtools-<版本>（自带 git/vim/python3/pnpm/uv 等，适合 SSH 进去干活）
+# 跟踪的上游变体：devtools-<版本>（自带 git/vim/python3/pnpm/uv/gcc/Go 等，适合 SSH 进去干活）
 #
 # 上游镜像事实（2026-11 核对）：
 #   * 基础镜像 node:24-slim（Debian 12 bookworm）
 #   * WORKDIR /app，ENTRYPOINT ["/app/entrypoint.sh"]，默认监听 3080
 #   * 以 root 运行
+#   * 自带 /usr/local/go（2026-11 为 go1.26.11），但没有进 PATH
 # 因此这里可以直接 apt-get 安装 openssh-server，并用 entrypoint 包裹上游入口。
 #
 # 本地构建：
@@ -29,7 +32,7 @@ ARG BUILD_DATE=unknown
 ARG UPSTREAM_VERSION=unknown
 
 LABEL org.opencontainers.image.title="dsh" \
-      org.opencontainers.image.description="DeepSeek Harness + OpenSSH Server；root 密码通过环境变量 SSH_ROOT_PASSWORD 注入" \
+      org.opencontainers.image.description="DeepSeek Harness + OpenSSH Server + Go（已在 PATH）；root 密码通过环境变量 SSH_ROOT_PASSWORD 注入" \
       org.opencontainers.image.source="${SOURCE_URL}" \
       org.opencontainers.image.base.name="${BASE_IMAGE}" \
       org.opencontainers.image.revision="${BUILD_REVISION}" \
@@ -55,7 +58,21 @@ COPY docker/install-gh.sh /usr/local/bin/dsh-install-gh.sh
 RUN chmod 0755 /usr/local/bin/dsh-install-gh.sh \
  && /usr/local/bin/dsh-install-gh.sh
 
-# ── 3. 启动脚本 / 健康检查 / 上游入口桥接 ──────────────────────────────
+# ── 3. Go 工具链：直接用上游自带的，只补 PATH ───────────────────────────
+# 上游 devtools 变体自带 /usr/local/go（2026-11 为 go1.26.11），但没进 PATH。
+# 这里不安装、不下载、不降级：有就直接链进 /usr/local/bin，没有就让构建失败，
+# 避免上游哪天删掉 Go 还悄悄发出一个没有 go 的镜像。
+RUN set -eu; \
+    if [ ! -x /usr/local/go/bin/go ]; then \
+      echo '[dsh] 错误：上游镜像里没有 /usr/local/go/bin/go（devtools 变体应当自带 Go）' >&2; \
+      exit 1; \
+    fi; \
+    mkdir -p /usr/local/bin; \
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go; \
+    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt; \
+    go version
+
+# ── 4. 启动脚本 / 健康检查 / 上游入口桥接 ──────────────────────────────
 COPY docker/entrypoint.sh /usr/local/bin/dsh-entrypoint.sh
 COPY docker/healthcheck.sh /usr/local/bin/dsh-healthcheck.sh
 COPY docker/upstream-launch.sh /usr/local/bin/dsh-upstream-launch.sh
@@ -63,7 +80,7 @@ RUN chmod 0755 /usr/local/bin/dsh-entrypoint.sh \
                 /usr/local/bin/dsh-healthcheck.sh \
                 /usr/local/bin/dsh-upstream-launch.sh
 
-# ── 4. 清理构建期残留（apt 缓存 / 文档 / man）──────────────────────────
+# ── 5. 清理构建期残留（apt 缓存 / 文档 / man）──────────────────────────
 # 这些文件运行期用不到，但会让镜像白白大几十 MB
 RUN rm -rf /var/lib/apt/lists/* \
            /var/cache/apt/archives/*.deb \
@@ -73,13 +90,16 @@ RUN rm -rf /var/lib/apt/lists/* \
            /tmp/* \
            /var/tmp/* 2>/dev/null || true
 
-# ── 5. 运行参数默认值（均可在 docker run -e 覆盖）──────────────────────
+# ── 6. 运行参数默认值（均可在 docker run -e 覆盖）──────────────────────
+# 不写死 GOROOT：go 会自己从可执行文件路径推断；这里只补 PATH 和 GOPATH。
 ENV SSH_ENABLED=true \
     SSH_PORT=22 \
     SSH_LISTEN_ADDRESS=0.0.0.0 \
     SSH_PERMIT_ROOT_LOGIN=yes \
     SSH_PASSWORD_AUTHENTICATION=auto \
-    DSH_APP_ENABLED=true
+    DSH_APP_ENABLED=true \
+    GOPATH=/root/go \
+    PATH=/usr/local/go/bin:/root/go/bin:${PATH}
 
 # 22 = sshd；3080 由上游 EXPOSE 声明并自动继承
 EXPOSE 22

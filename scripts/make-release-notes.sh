@@ -34,7 +34,7 @@ assets_table() {
 cat <<EOF
 ## ${IMAGE_NAME} \`${RELEASE_TAG}\`
 
-在上游 \`${UPSTREAM_REPO}:${UPSTREAM_TAG}\` 基础上加装 **OpenSSH Server** 与 **gh**，root 密码由环境变量注入。
+在上游 \`${UPSTREAM_REPO}:${UPSTREAM_TAG}\` 基础上加装 **OpenSSH Server**、**gh**，并把上游自带的 Go 接进 \`PATH\`，root 密码由环境变量注入。
 
 | 文件 | 大小 |
 | --- | --- |

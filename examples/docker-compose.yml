@@ -8,10 +8,11 @@
 #      docker compose up -d
 #      docker compose up -d --force-recreate   # 换镜像时用（restart 不会换镜像）
 #
-# 三个目录会自动创建，首次启动时：
+# 四个目录会自动创建，首次启动时：
 #   ./dsh-data  —— 空的，DSH 初始化会话/配置
 #   ./workspaces—— 空的，在 Web UI 里把 /root/workspaces 添加为工作区
 #   ./ssh       —— 空的，自动生成 sshd_config 与主机密钥（之后就固定了）
+#   ./go        —— 空的，Go 的 GOPATH：模块缓存 + go install 的二进制
 services:
   dsh:
     # 与 Release tag 保持一致（上游 devtools-<版本>）
@@ -37,6 +38,9 @@ services:
       - ./workspaces:/root/workspaces
       # SSH 主机密钥 + sshd 配置；挂上后重建容器指纹不变
       - ./ssh:/etc/ssh
+      # Go 的模块缓存与 go install 的二进制；容器重建（--force-recreate）后还在，
+      # 不用重新下载依赖。镜像里 go 来自上游，GOPATH/PATH 已由镜像设好。
+      - ./go:/root/go
     healthcheck:
       test: ["CMD", "/usr/local/bin/dsh-healthcheck.sh"]
       interval: 30s
