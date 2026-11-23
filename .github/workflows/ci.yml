@@ -103,7 +103,7 @@ jobs:
         run: bash scripts/gen-launcher.sh smanx/deepseek-harness:devtools-latest docker/upstream-launch.sh
 
       - name: 构建（仅本地加载，amd64）
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
