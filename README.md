@@ -84,7 +84,7 @@ docker compose up -d
 
 - 默认允许 root 密码登录，只建议内网使用。
 - 密码和 token 走环境变量时 `docker inspect` 可见；敏感场景用 `SSH_ROOT_PASSWORD_FILE`。
-- 镜像约 800 MB（上游 devtools 514 MB + gh/openssh/tini 约 15 MB + Go 工具链解压后约 265 MB；CI 的「镜像体积报表」会打印实际值）。Release 里的 `.tar.gz` 是另一份拷贝，`docker load` 完可以删。
+- 镜像约 594 MB（上游 devtools 514 MB + gh/openssh/tini 约 15 MB + Go 工具链约 80 MB；CI 的「镜像体积报表」会打印实际值）。Release 里的 `.tar.gz` 是另一份拷贝，`docker load` 完可以删。
 
 ## 致谢
 

@@ -89,7 +89,7 @@ Upstream variables (`PROXY_USERNAME`, `PROXY_PASSWORD`, `DSH_PORT`, …) keep wo
 
 - Root password login is allowed by default; private networks only.
 - Passwords and tokens passed as env vars are visible in `docker inspect`; use `SSH_ROOT_PASSWORD_FILE` when that matters.
-- The image is ~800 MB (514 MB upstream + ~15 MB for gh/openssh/tini + ~265 MB unpacked Go toolchain; the CI size report prints the actual numbers). The release `.tar.gz` is a second copy you can delete after `docker load`.
+- The image is ~594 MB (514 MB upstream + ~15 MB for gh/openssh/tini + ~80 MB for the Go toolchain; the CI size report prints the actual numbers). The release `.tar.gz` is a second copy you can delete after `docker load`.
 
 ## Credits
 
