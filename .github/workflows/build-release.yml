@@ -126,7 +126,7 @@ jobs:
 
       - name: 设置 QEMU（仅多架构时需要）
         if: contains(env.PLATFORMS, 'arm64')
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: 设置 Buildx
         uses: docker/setup-buildx-action@v3
