@@ -71,6 +71,8 @@ docker compose up -d
 | `SSH_PORT` | `22` | 容器内 sshd 端口 |
 | `SSH_ENABLED` | `true` | `false` 时不启动 sshd |
 | `GH_TOKEN` | – | 容器内 `gh` 用的 token |
+| `GOPROXY` | `https://goproxy.cn,direct` | Go 模块代理（compose 给的默认值，`.env` 里可覆盖；不需要就设 `direct`） |
+| `GOPRIVATE` | – | 私有仓库模块（逗号分隔），命中时不走代理、不查校验和库 |
 
 上游变量（`PROXY_USERNAME`、`PROXY_PASSWORD`、`DSH_PORT` 等）照常生效。
 

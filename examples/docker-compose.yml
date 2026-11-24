@@ -32,6 +32,11 @@ services:
       PROXY_PASSWORD: ${PROXY_PASSWORD:-}
       # 可选：容器内 gh 用的 token（建议 fine-grained、最小权限、短期）
       GH_TOKEN: ${GH_TOKEN:-}
+      # Go 模块代理：默认国内镜像，挂了或找不到时回落直连。
+      # 不想要代理就在这里改成 direct，或在 .env 里覆盖 GOPROXY。
+      GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+      # 私有仓库模块（逗号分隔，如 git.corp.example.com）：命中时跳过代理与校验和库
+      GOPRIVATE: ${GOPRIVATE:-}
     volumes:
       # DSH 的会话 / 配置
       - ./dsh-data:/root/.dsh

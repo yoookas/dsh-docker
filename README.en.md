@@ -77,6 +77,8 @@ not mounted — they revert to defaults after recreation.
 | `SSH_PORT` | `22` | sshd port inside the container |
 | `SSH_ENABLED` | `true` | `false` = no sshd |
 | `GH_TOKEN` | – | token for the bundled `gh` |
+| `GOPROXY` | `https://goproxy.cn,direct` | Go module proxy (default set by compose; override in `.env`, or use `direct`) |
+| `GOPRIVATE` | – | private modules (comma-separated); skip the proxy and checksum DB |
 
 Upstream variables (`PROXY_USERNAME`, `PROXY_PASSWORD`, `DSH_PORT`, …) keep working.
 
