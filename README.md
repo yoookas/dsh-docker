@@ -11,7 +11,7 @@
 
 ## 快速开始
 
-部署方式是 [Docker Compose](examples/docker-compose.yml)，四个目录（`dsh-data` / `workspaces` / `ssh` / `go`）会自动创建。
+部署方式是 [Docker Compose](examples/docker-compose.yml)，五个目录（`dsh-data` / `workspaces` / `ssh` / `go` / `go-cache`）会自动创建。
 
 ```bash
 # 1. 加载镜像包（按架构二选一：arm64 / amd64）
@@ -40,7 +40,8 @@ docker compose up -d
 | `./dsh-data` | `/root/.dsh` | 会话 / 配置（上游约定） |
 | `./workspaces` | `/root/workspaces` | 工作区，Web UI 里添加 `/root/workspaces` |
 | `./ssh` | `/etc/ssh` | 主机密钥 + sshd 配置；空目录首次启动自动生成，之后指纹固定 |
-| `./go` | `/root/go` | `GOPATH`：Go 模块缓存 + `go install` 的二进制，重建容器后不用重新下载依赖 |
+| `./go` | `/root/go` | `GOPATH`：Go 模块缓存（`pkg/mod`）+ `go install` 的二进制（`bin`），重建后不用重新下载依赖 |
+| `./go-cache` | `/root/.cache/go-build` | Go 编译缓存（`GOCACHE`），可能长到几 GB；删掉只是下次编译变慢，不会坏 |
 
 ## 内置工具
 
@@ -57,8 +58,9 @@ docker compose up -d
 构建时下载官方 tarball（约 70 MB）并用 go.dev 清单里的 sha256 校验，装完执行 `go version` 断言版本；
 装不上或校验不过就让构建失败。升级 Go 只改 Dockerfile 里的 `ARG GO_VERSION`。
 
-`go install` 的二进制落在 `/root/go/bin`（已在 `PATH`）；compose 里把 `./go` 挂到 `/root/go`，
-容器重建后模块缓存和这些二进制都还在。
+`go install` 的二进制落在 `/root/go/bin`（已在 `PATH`）；compose 里把 `./go` 挂到 `/root/go`、
+`./go-cache` 挂到 `/root/.cache/go-build`，容器重建后模块缓存、二进制和编译缓存都还在。
+`go env -w` 写的配置在 `/root/.config/go/env`，这个没有挂，重建后恢复默认。
 
 ## 环境变量
 

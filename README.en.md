@@ -13,8 +13,8 @@ a tarball to GitHub Releases (tags mirror upstream).
 
 ## Quick start
 
-Deployment is [Docker Compose](examples/docker-compose.yml); the `dsh-data` / `workspaces` / `ssh` / `go`
-directories are created automatically.
+Deployment is [Docker Compose](examples/docker-compose.yml); the `dsh-data` / `workspaces` / `ssh` / `go` /
+`go-cache` directories are created automatically.
 
 ```bash
 # 1. Load the image tarball (pick your arch: arm64 / amd64)
@@ -44,7 +44,8 @@ Upgrading: `docker load` the new tarball, then `docker compose up -d --force-rec
 | `./dsh-data` | `/root/.dsh` | sessions / config (upstream convention) |
 | `./workspaces` | `/root/workspaces` | workspace; add `/root/workspaces` in the Web UI |
 | `./ssh` | `/etc/ssh` | host keys + sshd config; generated on first start, fingerprint stays stable |
-| `./go` | `/root/go` | `GOPATH`: Go module cache + `go install` binaries; survives container recreation |
+| `./go` | `/root/go` | `GOPATH`: module cache (`pkg/mod`) + `go install` binaries (`bin`); survives recreation |
+| `./go-cache` | `/root/.cache/go-build` | Go build cache (`GOCACHE`); can grow to a few GB, safe to delete (only slower rebuilds) |
 
 ## Bundled tools
 
@@ -62,8 +63,10 @@ The build downloads the official tarball (~70 MB), verifies it against the sha25
 manifest, and asserts `go version` afterwards; a failed download or checksum fails the build. Bumping Go
 is a single `ARG GO_VERSION` change in the Dockerfile.
 
-`go install` binaries land in `/root/go/bin` (on `PATH`); compose mounts `./go` at `/root/go`, so the
-module cache and those binaries survive container recreation.
+`go install` binaries land in `/root/go/bin` (on `PATH`); compose mounts `./go` at `/root/go` and
+`./go-cache` at `/root/.cache/go-build`, so the module cache, those binaries and the build cache all
+survive container recreation. Settings written by `go env -w` live in `/root/.config/go/env`, which is
+not mounted — they revert to defaults after recreation.
 
 ## Environment variables
 
